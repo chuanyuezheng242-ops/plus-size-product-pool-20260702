@@ -466,9 +466,29 @@ select:focus {
   color: var(--ink);
   font-size: 12px;
   font-weight: 650;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.store-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.shop-rating {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  min-height: 18px;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #c2410c;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 750;
 }
 
 .meta {
@@ -678,7 +698,10 @@ select:focus {
       </div>
       <div class="card-body">
         <a class="pid product-title" target="_blank" rel="noreferrer"></a>
-        <p class="store-line"></p>
+        <p class="store-line">
+          <span class="store-name"></span>
+          <span class="shop-rating"></span>
+        </p>
         <p class="meta product-meta"></p>
         <div class="commerce-line">
           <span class="price"></span>
@@ -940,7 +963,7 @@ window.INITIAL_PRODUCTS = [];
   <script>
 (function () {
   const DATA_URL = "data.csv";
-  const POOL_KEY = "plus_size_product_selection_pool_v3";
+  const POOL_KEY = "plus_size_product_selection_pool_v3_row_tag_unique";
   const DETAIL_KEYS = ["商品详情页URL", "商品详情链接", "详情链接", "商品链接", "链接", "Product URL", "product_url", "url"];
   const IMAGE_KEYS = ["首图 url", "首图URL", "图片URL", "商品图片", "图片链接", "Image URL", "image_url", "image"];
 
@@ -1154,7 +1177,7 @@ window.INITIAL_PRODUCTS = [];
 
   function normalizeRows(rows) {
     return rows
-      .map((row) => {
+      .map((row, index) => {
         const clean = {};
         Object.entries(row || {}).forEach(([key, value]) => {
           const name = String(key || "").trim();
@@ -1163,18 +1186,23 @@ window.INITIAL_PRODUCTS = [];
         });
 
         const pid = getValue(clean, ["PID", "pid", "商品ID", "Product ID"]);
+        const spu = getValue(clean, ["SPU", "spu"]);
+        const tag = getValue(clean, ["新老品标签", "标签", "Tag", "tag"]);
         const imageUrl = getValue(clean, IMAGE_KEYS);
+        const detailUrl = getDetailUrl(clean, pid);
+        const rowKey = [spu || pid, tag, detailUrl, index].filter(Boolean).join("__");
         return {
           raw: clean,
-          id: pid || imageUrl || JSON.stringify(clean),
+          id: rowKey || imageUrl || JSON.stringify(clean),
           pid,
-          spu: getValue(clean, ["SPU", "spu"]),
+          spu,
           country: getValue(clean, ["国家", "Country", "country"]),
           store: getValue(clean, ["shop_name", "店铺名称", "店铺", "Store", "store"]),
+          shopRating: getValue(clean, ["店铺评分", "店铺分", "店铺体验分", "shop_score", "shop_rating", "Shop Score", "Shop Rating", "Store Rating", "store_rating", "rating"]),
           secondCategory: getValue(clean, ["二级类目", "Second Category"]),
           thirdCategory: getValue(clean, ["三级类目", "类目", "Category", "category"]),
           listedAt: getValue(clean, ["上架时间", "首次上架日期", "上架日期", "Listed Date", "date"]),
-          tag: getValue(clean, ["新老品标签", "标签", "Tag", "tag"]),
+          tag,
           dailyShare: getValue(clean, ["商品卡日均占比", "日均占比", "Daily Share", "daily_share"]),
           gpmTier: getValue(clean, ["GPM分层", "GPM 分层", "GPM Tier", "gpm_tier"]),
           stock: getValue(clean, ["可用库存", "库存", "Available Stock", "stock"]),
@@ -1182,10 +1210,10 @@ window.INITIAL_PRODUCTS = [];
           affiliate: getValue(clean, ["是否在联盟", "联盟", "Affiliate", "affiliate"]),
           price: getValue(clean, ["营销价", "价格", "Price", "price"]),
           imageUrl,
-          detailUrl: getDetailUrl(clean, pid)
+          detailUrl
         };
       })
-      .filter((item) => item.pid || item.imageUrl);
+      .filter((item) => item.pid || item.spu || item.imageUrl);
   }
 
   function getValue(row, keys) {
@@ -1279,7 +1307,7 @@ window.INITIAL_PRODUCTS = [];
       const matchesTag = state.tag === "全部标签" || item.tag === state.tag;
       const matchesSecondCategory = state.secondCategory === "全部二级类目" || item.secondCategory === state.secondCategory;
       const matchesCategory = state.category === "全部三级类目" || item.thirdCategory === state.category;
-      const haystack = [item.pid, item.spu, item.store, item.secondCategory, item.thirdCategory, item.country, item.tag].join(" ").toLowerCase();
+      const haystack = [item.pid, item.spu, item.store, item.shopRating, item.secondCategory, item.thirdCategory, item.country, item.tag].join(" ").toLowerCase();
       return matchesCountry && matchesTag && matchesSecondCategory && matchesCategory && haystack.includes(state.query);
     });
   }
@@ -1332,12 +1360,23 @@ window.INITIAL_PRODUCTS = [];
       });
       pid.textContent = item.pid || "查看详情";
       pid.href = item.detailUrl;
-      node.querySelector(".store-line").textContent = item.store || "店铺未提供";
-      node.querySelector(".product-meta").textContent = [
+      const storeName = node.querySelector(".store-name");
+      storeName.textContent = item.store || "";
+      storeName.hidden = !item.store;
+      const shopRating = node.querySelector(".shop-rating");
+      shopRating.textContent = item.shopRating ? `店铺评分 ${item.shopRating}` : "";
+      shopRating.hidden = !item.shopRating;
+      node.querySelector(".store-line").hidden = !item.store && !item.shopRating;
+      const metaText = [
         [item.secondCategory, item.thirdCategory].filter(Boolean).join(" / "),
         item.country
-      ].filter(Boolean).join("  |  ") || "商品信息未提供";
-      node.querySelector(".date").textContent = item.listedAt || "";
+      ].filter(Boolean).join("  |  ");
+      const productMeta = node.querySelector(".product-meta");
+      productMeta.textContent = metaText;
+      productMeta.hidden = !metaText;
+      const date = node.querySelector(".date");
+      date.textContent = item.listedAt || "";
+      date.hidden = !item.listedAt;
       const dailyShare = node.querySelector(".daily-share");
       dailyShare.textContent = item.dailyShare || "";
       dailyShare.hidden = !item.dailyShare;
@@ -1345,12 +1384,22 @@ window.INITIAL_PRODUCTS = [];
       gpmTier.textContent = item.gpmTier || "";
       gpmTier.hidden = !item.gpmTier;
       gpmTier.classList.toggle("is-high", item.gpmTier === "高GPM");
-      node.querySelector(".stock").textContent = item.stock ? `库存 ${item.stock}` : "库存未提供";
-      node.querySelector(".sales-rank").textContent = item.salesRank ? `#${item.salesRank}` : "排名未提供";
+      const stock = node.querySelector(".stock");
+      stock.textContent = item.stock ? `库存 ${item.stock}` : "";
+      stock.hidden = !item.stock;
+      const salesRank = node.querySelector(".sales-rank");
+      salesRank.textContent = item.salesRank ? `#${item.salesRank}` : "";
+      salesRank.hidden = !item.salesRank;
       const affiliate = node.querySelector(".affiliate");
       affiliate.textContent = item.affiliate || "";
       affiliate.hidden = !item.affiliate;
-      node.querySelector(".price").textContent = formatPrice(item.price);
+      const price = node.querySelector(".price");
+      price.textContent = formatPrice(item.price);
+      price.hidden = !item.price;
+      node.querySelector(".divider").hidden = !item.price || !item.stock;
+      node.querySelector(".commerce-line").hidden = !item.price && !item.stock;
+      node.querySelector(".signal-line").hidden = !item.salesRank && !item.gpmTier && !item.affiliate;
+      node.querySelector(".sub-signal").hidden = !item.dailyShare && !item.listedAt;
       fragment.append(node);
     });
 
@@ -1363,11 +1412,11 @@ window.INITIAL_PRODUCTS = [];
   }
 
   function formatValue(value) {
-    return value ? value : "未提供";
+    return value || "";
   }
 
   function formatPrice(value) {
-    if (!value) return "未提供";
+    if (!value) return "";
     return /^\d+(\.\d+)?$/.test(value) ? `$${value}` : value;
   }
 
